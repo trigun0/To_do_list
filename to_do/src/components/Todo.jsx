@@ -2,25 +2,33 @@
 import React, { useState, useEffect } from "react";
 import todo from "../assets/todo.png";
 import TodoItems from "./TodoItems";
+import { fetchTasks, addTask, updateTask, deleteTask } from "../api";
 
 const Todo = () => {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [alert, setAlert] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(null); // store task index for confirmation
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [filter, setFilter] = useState("");
 
-  // ---------------- Load from localStorage ----------------
+  // ---------------- Load tasks from backend ----------------
   useEffect(() => {
-    const savedTasks = localStorage.getItem("tasks");
-    if (savedTasks) setTasks(JSON.parse(savedTasks));
-  }, []);
+    loadTasks(filter);
+  }, [filter]);
 
-  // ---------------- Save to localStorage ----------------
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+  const loadTasks = async (statusFilter = "") => {
+    try {
+      const query = statusFilter ? `?status=${statusFilter}` : "";
+      const data = await fetchTasks(query);
+      setTasks(data);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+    }
+  };
 
-  // ---------------- Show alert temporarily ----------------
+  // ---------------- Show alert ----------------
   const showAlert = (message) => {
     setAlert(message);
     setTimeout(() => setAlert(""), 2000);
@@ -30,50 +38,120 @@ const Todo = () => {
   const handleChange = (e) => setNewTask(e.target.value);
 
   // ---------------- Add new task ----------------
-  const addTask = () => {
+  const handleAddTask = async () => {
     if (newTask.trim() === "") {
       showAlert("⚠️ Please type something before adding a task!");
       return;
     }
-    setTasks([...tasks, { text: newTask, completed: false }]);
-    setNewTask("");
+    try {
+      const newTaskData = await addTask({
+        task: newTask,
+        description: "",
+        status: "Created",
+      });
+      setTasks([...tasks, newTaskData]);
+      setNewTask("");
+      showAlert("✅ Task added successfully!");
+    } catch (error) {
+      console.error("Error adding task:", error);
+    }
   };
 
-  // ---------------- Ask for delete confirmation ----------------
+  // ---------------- Confirm Delete ----------------
   const confirmDeleteTask = (index) => {
-    setConfirmDelete(index); // show confirmation box
+    setConfirmDelete(index);
   };
 
-  // ---------------- Proceed with delete ----------------
-  const deleteTask = (index) => {
-    const updatedTasks = tasks.filter((_, i) => i !== index);
-    setTasks(updatedTasks);
-    setConfirmDelete(null); // hide confirmation
-    showAlert("🗑️ Task deleted successfully!");
+  // ---------------- Delete Task ----------------
+  const handleDeleteTask = async (index) => {
+    const taskToDelete = tasks[index];
+    try {
+      await deleteTask(taskToDelete.id);
+      const updatedTasks = tasks.filter((_, i) => i !== index);
+      setTasks(updatedTasks);
+      showAlert("🗑️ Task deleted successfully!");
+    } catch (error) {
+      console.error("Error deleting task:", error);
+    } finally {
+      setConfirmDelete(null);
+    }
   };
 
-  // ---------------- Cancel delete ----------------
-  const cancelDelete = () => {
-    setConfirmDelete(null);
+  // ---------------- Toggle Completion ----------------
+  const handleToggle = async (index) => {
+    const taskToUpdate = tasks[index];
+    const newStatus =
+      taskToUpdate.status === "Completed" ? "Created" : "Completed";
+    try {
+      const updated = await updateTask(taskToUpdate.id, {
+        ...taskToUpdate,
+        status: newStatus,
+      });
+      const updatedTasks = tasks.map((task, i) =>
+        i === index ? updated : task
+      );
+      setTasks(updatedTasks);
+    } catch (error) {
+      console.error("Error toggling task:", error);
+    }
   };
 
-  // ---------------- Toggle completion ----------------
-  const toggleTask = (index) => {
-    const updatedTasks = tasks.map((task, i) =>
-      i === index ? { ...task, completed: !task.completed } : task
-    );
-    setTasks(updatedTasks);
+  // ---------------- Cancel Task ----------------
+  const handleCancel = async (index) => {
+    const taskToCancel = tasks[index];
+    try {
+      const updated = await updateTask(taskToCancel.id, {
+        ...taskToCancel,
+        status: "Cancelled",
+      });
+      const updatedTasks = tasks.map((t, i) => (i === index ? updated : t));
+      setTasks(updatedTasks);
+      showAlert("🚫 Task marked as Cancelled!");
+    } catch (error) {
+      console.error("Error cancelling task:", error);
+    }
   };
 
-  // ---------------- Clear Completed ----------------
-  const clearCompleted = () => {
-    const remainingTasks = tasks.filter((task) => !task.completed);
-    setTasks(remainingTasks);
+  // ---------------- Edit Feature ----------------
+  const startEdit = (index) => {
+    setEditingIndex(index);
+    setEditText(tasks[index].task);
+  };
+
+  const saveEdit = async (index) => {
+    if (editText.trim() === "") {
+      showAlert("⚠️ Task cannot be empty!");
+      return;
+    }
+    const taskToEdit = tasks[index];
+    try {
+      const updated = await updateTask(taskToEdit.id, {
+        ...taskToEdit,
+        task: editText,
+      });
+      const updatedTasks = tasks.map((task, i) =>
+        i === index ? updated : task
+      );
+      setTasks(updatedTasks);
+      setEditingIndex(null);
+      setEditText("");
+      showAlert("✏️ Task updated successfully!");
+    } catch (error) {
+      console.error("Error updating task:", error);
+      showAlert("❌ Cannot edit Completed or Cancelled task!");
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setEditText("");
   };
 
   // ---------------- Summary ----------------
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((task) => task.completed).length;
+  const completedTasks = tasks.filter(
+    (task) => task.status === "Completed"
+  ).length;
   const pendingTasks = totalTasks - completedTasks;
 
   return (
@@ -99,13 +177,13 @@ const Todo = () => {
           </p>
           <div className="flex justify-center gap-4">
             <button
-              onClick={() => deleteTask(confirmDelete)}
+              onClick={() => handleDeleteTask(confirmDelete)}
               className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-medium"
             >
               Yes, Delete
             </button>
             <button
-              onClick={cancelDelete}
+              onClick={() => setConfirmDelete(null)}
               className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded-lg font-medium"
             >
               Cancel
@@ -130,11 +208,25 @@ const Todo = () => {
           onChange={handleChange}
         />
         <button
-          onClick={addTask}
+          onClick={handleAddTask}
           className="bg-orange-600 hover:bg-orange-700 transition-all rounded-full w-32 h-14 text-white text-lg font-medium cursor-pointer"
         >
           Add +
         </button>
+      </div>
+
+      {/* ------- Status Filter ------ */}
+      <div className="flex justify-end mb-4">
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-gray-700 shadow-sm"
+        >
+          <option value="">All Tasks</option>
+          <option value="Created">Created</option>
+          <option value="Completed">Completed</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
       </div>
 
       {/* ------- Task List ------ */}
@@ -143,33 +235,50 @@ const Todo = () => {
           <p className="text-gray-500 text-center italic">No tasks yet...</p>
         ) : (
           tasks.map((task, index) => (
-            <TodoItems
-              key={index}
-              text={task.text}
-              completed={task.completed}
-              onToggle={() => toggleTask(index)}
-              onDelete={() => confirmDeleteTask(index)} // confirmation first
-            />
+            <div key={index}>
+              {editingIndex === index ? (
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="flex-1 border rounded-lg px-3 py-2 text-gray-700"
+                  />
+                  <button
+                    onClick={() => saveEdit(index)}
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded-lg text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <TodoItems
+                  text={task.task}
+                  completed={task.status === "Completed"}
+                  onToggle={() => handleToggle(index)}
+                  onDelete={() => confirmDeleteTask(index)}
+                  onEdit={() => startEdit(index)}
+                  onCancel={() => handleCancel(index)} // 🆕 Cancel button
+                />
+              )}
+            </div>
           ))
         )}
       </div>
 
-      {/* ------- Summary & Clear Button ------ */}
+      {/* ------- Summary ------ */}
       <div className="mt-auto pt-6 border-t border-gray-200 text-center text-gray-700">
         <p className="font-semibold text-lg mb-3">
           Total: <span className="text-blue-600">{totalTasks}</span> | Completed:{" "}
           <span className="text-green-600">{completedTasks}</span> | Pending:{" "}
           <span className="text-red-500">{pendingTasks}</span>
         </p>
-
-        {completedTasks > 0 && (
-          <button
-            onClick={clearCompleted}
-            className="bg-red-600 hover:bg-red-700 transition-all text-white py-2 px-6 rounded-full text-sm font-medium"
-          >
-            Clear Completed
-          </button>
-        )}
       </div>
     </div>
   );
