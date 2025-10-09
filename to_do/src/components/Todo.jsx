@@ -3,12 +3,12 @@ import React, { useState, useEffect } from "react";
 import todo from "../assets/todo.png";
 import TodoItems from "./TodoItems";
 import { fetchTasks, addTask, updateTask, deleteTask } from "../api";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 
 const Todo = () => {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
-  const [alert, setAlert] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
   const [editText, setEditText] = useState("");
   const [filter, setFilter] = useState("");
@@ -28,19 +28,13 @@ const Todo = () => {
     }
   };
 
-  // ---------------- Show alert ----------------
-  const showAlert = (message) => {
-    setAlert(message);
-    setTimeout(() => setAlert(""), 2000);
-  };
-
   // ---------------- Handle input ----------------
   const handleChange = (e) => setNewTask(e.target.value);
 
   // ---------------- Add new task ----------------
   const handleAddTask = async () => {
     if (newTask.trim() === "") {
-      showAlert("⚠️ Please type something before adding a task!");
+      Swal.fire("⚠️ Empty Field", "Please type something before adding!", "warning");
       return;
     }
     try {
@@ -50,30 +44,37 @@ const Todo = () => {
         status: "Created",
       });
       setNewTask("");
-      showAlert("✅ Task added successfully!");
-      await loadTasks(filter); // 👈 Auto-refresh list after adding
+      await loadTasks(filter);
+      Swal.fire("✅ Task Added", "Your task has been added successfully!", "success");
     } catch (error) {
       console.error("Error adding task:", error);
+      Swal.fire("❌ Error", "Failed to add task.", "error");
     }
-  };
-
-  // ---------------- Confirm Delete ----------------
-  const confirmDeleteTask = (index) => {
-    setConfirmDelete(index);
   };
 
   // ---------------- Delete Task ----------------
   const handleDeleteTask = async (index) => {
     const taskToDelete = tasks[index];
-    try {
-      await deleteTask(taskToDelete.id);
-      const updatedTasks = tasks.filter((_, i) => i !== index);
-      setTasks(updatedTasks);
-      showAlert("🗑️ Task deleted successfully!");
-    } catch (error) {
-      console.error("Error deleting task:", error);
-    } finally {
-      setConfirmDelete(null);
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "This task will be deleted permanently.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Yes, delete it!",
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteTask(taskToDelete.id);
+        const updatedTasks = tasks.filter((_, i) => i !== index);
+        setTasks(updatedTasks);
+        Swal.fire("Deleted!", "Your task has been deleted.", "success");
+      } catch (error) {
+        console.error("Error deleting task:", error);
+        Swal.fire("Error!", "Something went wrong while deleting.", "error");
+      }
     }
   };
 
@@ -106,9 +107,10 @@ const Todo = () => {
       });
       const updatedTasks = tasks.map((t, i) => (i === index ? updated : t));
       setTasks(updatedTasks);
-      showAlert("🚫 Task marked as Cancelled!");
+      Swal.fire("🚫 Task Cancelled", "The task has been marked as cancelled.", "info");
     } catch (error) {
       console.error("Error cancelling task:", error);
+      Swal.fire("❌ Error", "Unable to cancel the task.", "error");
     }
   };
 
@@ -120,7 +122,7 @@ const Todo = () => {
 
   const saveEdit = async (index) => {
     if (editText.trim() === "") {
-      showAlert("⚠️ Task cannot be empty!");
+      Swal.fire("⚠️ Empty Field", "Task cannot be empty!", "warning");
       return;
     }
     const taskToEdit = tasks[index];
@@ -135,10 +137,10 @@ const Todo = () => {
       setTasks(updatedTasks);
       setEditingIndex(null);
       setEditText("");
-      showAlert("✏️ Task updated successfully!");
+      Swal.fire("✏️ Updated", "Task updated successfully!", "success");
     } catch (error) {
       console.error("Error updating task:", error);
-      showAlert("❌ Cannot edit Completed or Cancelled task!");
+      Swal.fire("❌ Error", "Completed or Cancelled tasks cannot be edited!", "error");
     }
   };
 
@@ -156,42 +158,6 @@ const Todo = () => {
 
   return (
     <div className="bg-white place-self-center w-11/12 max-w-md flex flex-col p-7 min-h-[550px] rounded-xl shadow-lg relative">
-      {/* ------- Alert Toast ------ */}
-      {alert && (
-        <div
-          className={`absolute top-8 left-1/2 transform -translate-x-1/2 transition-all duration-500 ease-in-out ${
-            alert ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
-          }`}
-        >
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white font-semibold py-3 px-6 rounded-2xl shadow-lg text-base w-max mx-auto text-center">
-            {alert}
-          </div>
-        </div>
-      )}
-
-      {/* ------- Delete Confirmation Box ------ */}
-      {confirmDelete !== null && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-orange-600 border-gray-200 rounded-xl shadow-lg p-6 w-80 text-center z-10">
-          <p className="text-gray-800 font-medium text-lg mb-4">
-            ⚠️ Are you sure you want to delete this task?
-          </p>
-          <div className="flex justify-center gap-4">
-            <button
-              onClick={() => handleDeleteTask(confirmDelete)}
-              className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-medium"
-            >
-              Yes, Delete
-            </button>
-            <button
-              onClick={() => setConfirmDelete(null)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2 rounded-lg font-medium"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ------- Title ------ */}
       <div className="flex items-center gap-2 mb-8 mt-6">
         <img className="w-8" src={todo} alt="Todo Icon" />
@@ -219,7 +185,6 @@ const Todo = () => {
       <div className="flex justify-between items-center mb-5">
         <h2 className="text-lg font-semibold text-gray-700">
           🗂️ Filter Tasks:
-
         </h2>
         <select
           value={filter}
@@ -266,9 +231,9 @@ const Todo = () => {
                   text={task.task}
                   completed={task.status === "Completed"}
                   onToggle={() => handleToggle(index)}
-                  onDelete={() => confirmDeleteTask(index)}
+                  onDelete={() => handleDeleteTask(index)}
                   onEdit={() => startEdit(index)}
-                  onCancel={() => handleCancel(index)} // 🆕 Cancel button
+                  onCancel={() => handleCancel(index)}
                 />
               )}
             </div>
