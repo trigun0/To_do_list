@@ -44,14 +44,14 @@ const Todo = () => {
       return;
     }
     try {
-      const newTaskData = await addTask({
+      await addTask({
         task: newTask,
         description: "",
         status: "Created",
       });
-      setTasks([...tasks, newTaskData]);
       setNewTask("");
       showAlert("✅ Task added successfully!");
+      await loadTasks(filter); // 👈 Auto-refresh list after adding
     } catch (error) {
       console.error("Error adding task:", error);
     }
@@ -230,7 +230,7 @@ const Todo = () => {
       </div>
 
       {/* ------- Task List ------ */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 overflow-y-auto max-h-64 pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200 rounded-lg">
         {tasks.length === 0 ? (
           <p className="text-gray-500 text-center italic">No tasks yet...</p>
         ) : (
